@@ -1,0 +1,10 @@
+﻿    
+# Any text following ‘#’ should be ignored
+5 # Total number of nodes
+# NodeID - Domain name - port number
+0 localhost 53390 # Domain Name and port of node 0
+1 localhost 53345 # Domain Name and port of node 1
+2 localhost 53346 # Domain Name and port of node 2
+3 localhost 53347 # Domain Name and port of node 3
+4 localhost 53348 # Domain Name and port of node 4
+

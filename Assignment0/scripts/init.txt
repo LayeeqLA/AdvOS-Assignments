@@ -1,0 +1,7 @@
+# linux java version selections
+# UTD servers use JDK 1.8
+sudo update-alternatives --config java
+sudo update-alternatives --config javac
+
+# java compile to class
+javac -d ./bin/ ./src/Runner.java
