@@ -1,10 +1,21 @@
 package code;
 
+import com.sun.nio.sctp.SctpChannel;
+
 public class Node {
 
     private int id;
     private String host;
     private int port;
+    private SctpChannel channel;
+
+    public SctpChannel getChannel() {
+        return channel;
+    }
+
+    public void setChannel(SctpChannel channel) {
+        this.channel = channel;
+    }
 
     public int getId() {
         return id;
