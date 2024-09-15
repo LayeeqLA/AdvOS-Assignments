@@ -47,4 +47,8 @@ public class Node {
         this.port = port;
     }
 
+    public void printConfig() {
+        System.out.println("ID: " + id + " HOST: " + host + " PORT: " + port);
+    }
+
 }

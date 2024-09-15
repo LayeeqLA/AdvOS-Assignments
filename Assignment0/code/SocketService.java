@@ -56,7 +56,7 @@ public class SocketService implements Runnable {
         } catch (IOException | InterruptedException e) {
             System.err.println("xxxxx---SOCKET SERVICE ERROR---xxxxx");
             System.err.println(e.getMessage());
-            System.err.println(e.getStackTrace());
+            e.printStackTrace();
         }
     }
 
@@ -114,7 +114,7 @@ public class SocketService implements Runnable {
                 System.err.println("xxxxx---CLIENT HANDLER ERROR---xxxxx");
                 System.err.println("THREAD: " + Thread.currentThread().getName());
                 System.err.println(e.getMessage());
-                System.err.println(e.getStackTrace());
+                e.printStackTrace();
             }
         }
 

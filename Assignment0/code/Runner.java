@@ -40,13 +40,16 @@ public class Runner {
                     continue;
                 }
                 int attempts = 0;
-                while (attempts < Constants.CONNECT_MAX_ATTEMPTS) {
+                while (node.getChannel() == null && attempts < Constants.CONNECT_MAX_ATTEMPTS) {
                     try {
                         InetSocketAddress addr = new InetSocketAddress(node.getHost(), node.getPort());
+                        Thread.sleep(3000);
                         SctpChannel sc = SctpChannel.open(addr, 0, 0);
                         node.setChannel(sc);
+                        System.out.println("Connected successfully to node " + node.getId());
                     } catch (IOException e) {
-                        System.out.println("Connect error for node " + node.getId());
+                        System.err.println("Connect error for node " + node.getId() + " WILL RETRY");
+                        System.err.println(e.getMessage() != null ? e.getMessage() : "null");
                         Thread.sleep(Constants.CONNECT_WAIT);
                         attempts++;
                     }
@@ -64,6 +67,7 @@ public class Runner {
                 Message currentMessage = new Message(currentNode.getId(), Message.MessageType.DATA,
                         Constants.getRandomBroadcastInt());
                 currentMessage.print();
+                count++;
                 for (Node node : nodes) {
                     if (node == currentNode) {
                         continue;
@@ -97,7 +101,7 @@ public class Runner {
         } catch (NumberFormatException | IOException | InterruptedException | ClassNotFoundException e) {
             System.err.println("xxxxx---Processing error occured---xxxxx");
             System.err.println(e.getMessage());
-            System.err.println(e.getStackTrace());
+            e.printStackTrace();
         } finally {
             if (nodes != null) {
                 for (Node node : nodes) {
@@ -155,6 +159,11 @@ public class Runner {
         if (nodeCount != nodes.size()) {
             System.err.println("Config file node count mismatch");
             System.exit(-1);
+        }
+
+        System.out.println("***PRINTING NODE CONFIG***");
+        for (Node node : nodes) {
+            node.printConfig();
         }
 
         return nodes;
