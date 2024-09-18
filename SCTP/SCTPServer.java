@@ -6,7 +6,7 @@ public class SCTPServer
 {
 	// Port number to open server for clients to connect
 	// Client should connect to same port number that server opens
-	static int PORT = 1234; 
+	static int PORT = 53344;
 
 	// Size of ByteBuffer to accept incoming messages
 	static int MAX_MSG_SIZE = 4096;

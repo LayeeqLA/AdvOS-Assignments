@@ -6,7 +6,7 @@ class SCTPClient
 {
 	// PORT to connect to server
 	// Port number should be same as the port opened by the server
-	static int PORT = 1234;
+	static int PORT = 53344;
 
 	// Size of ByteBuffer to accept incoming messages
 	static int MAX_MSG_SIZE = 4096;
@@ -14,7 +14,7 @@ class SCTPClient
 	public static void main(String[] args) throws Exception
 	{
 		// Get address of server using name and port number
-		InetSocketAddress addr = new InetSocketAddress("dc02", PORT);
+		InetSocketAddress addr = new InetSocketAddress("localhost", PORT);
 
 		System.out.println("Trying connection to server");
 		Thread.sleep(3000);
