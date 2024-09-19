@@ -1,0 +1,20 @@
+# s i x g l o b a l parameter s ( s e e above )
+5 6 10 100 2000 15
+
+0 dc02 1234 # nodeID hostName listenPort
+1 dc03 1233#node1
+port is bad # check port
+2 dc04 1233
+3 dc05 1232
+4 dc06 1233
+#whatthe
+# dfwefewfwefwefwe
+
+1 4 # space delimi t ed l i s t o f ne ighbor s f o r node 0
+0 2 3 # space de l imi t ed l i s t o f ne ighbor s f o r node 1
+1 3 # . . . node 2
+but we should change below nodes!
+1 2 4 # . . . node 3
+0 3 # . . . node 4
+
+    bla bla blaaaaaaaa  
