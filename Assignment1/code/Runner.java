@@ -1,0 +1,202 @@
+package code;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import com.sun.nio.sctp.MessageInfo;
+import com.sun.nio.sctp.SctpChannel;
+
+public class Runner {
+
+    private static int nodeCount = -1; // T1
+    private static int nodeId;
+    private static int nodesConnected = 0;
+    private static int minPerActive; // T2
+    private static int maxPerActive; // T3
+    private static int minSendDelay; // T4
+    private static int snapshotDelay; // T5
+    private static int maxNumber; // T6 -> maxNoOfMessagesThatCanBeSent
+    private static String configPath;
+    private static String outputPath;
+
+    public static void main(String[] args) {
+        System.out.println("Initializing Service!");
+
+        if (args.length != 2) {
+            System.err.println("Need exactly TWO args!");
+            System.exit(-1);
+        }
+
+        List<Node> nodes = null;
+        try {
+            nodeId = Integer.parseInt(args[0]);
+            System.out.println("PID for this host: " + nodeId);
+
+            configPath = args[1];
+
+            nodes = processConfig();
+            Node currentNode = getNodeById(nodes, nodeId);
+            System.out.println("****CURRENT NODE****");
+            currentNode.printConfig();
+            System.exit(0);
+
+            Thread receiverThread = new Thread(new SocketService(currentNode, nodes.size() - 1));
+            receiverThread.start();
+
+            for (Node node : nodes) {
+                if (node == currentNode) {
+                    continue;
+                }
+                int attempts = 0;
+                while (node.getChannel() == null && attempts < Constants.CONNECT_MAX_ATTEMPTS) {
+                    try {
+                        InetSocketAddress addr = new InetSocketAddress(node.getHost(), node.getPort());
+                        Thread.sleep(3000);
+                        SctpChannel sc = SctpChannel.open(addr, 0, 0);
+                        node.setChannel(sc);
+                        System.out.println("Connected successfully to node " + node.getId());
+                    } catch (IOException e) {
+                        System.err.println("Connect error for node " + node.getId() + " WILL RETRY");
+                        System.err.println(e.getMessage() != null ? e.getMessage() : "null");
+                        Thread.sleep(Constants.CONNECT_WAIT);
+                        attempts++;
+                    }
+                }
+
+                if (node.getChannel() == null) {
+                    System.err.println("Failed to establish connection with node id " + node.getId());
+                    throw new InterruptedException("CONNECTION SETUP FAILED");
+                }
+            }
+
+            int count = 0;
+            while (count < Constants.MAX_MESSAGES) {
+                Thread.sleep(Constants.getRandomWait());
+                Message currentMessage = new Message(currentNode.getId(), Message.MessageType.DATA,
+                        Constants.getRandomBroadcastInt());
+                currentMessage.print();
+                count++;
+                for (Node node : nodes) {
+                    if (node == currentNode) {
+                        continue;
+                    }
+                    MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0); // MessageInfo for SCTP layer
+                    node.getChannel().send(currentMessage.toByteBuffer(), messageInfo);
+                }
+            }
+
+            if (currentNode.getId() == Constants.BASE_NODE) {
+                // received FINISH from ALL
+                receiverThread.join();
+                MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0); // MessageInfo for SCTP layer
+                Message terminateMessage = new Message(currentNode.getId(), Message.MessageType.TERMINATE, null);
+                for (Node node : nodes) {
+                    if (node == currentNode) {
+                        continue;
+                    }
+                    node.getChannel().send(terminateMessage.toByteBuffer(), messageInfo);
+                    Thread.sleep(2000);
+                    node.getChannel().close(); // TODO: check for any issues before msg is read by other processes
+                }
+            } else {
+                Node baseNode = getNodeById(nodes, Constants.BASE_NODE);
+                MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0); // MessageInfo for SCTP layer
+                Message finishMessage = new Message(currentNode.getId(), Message.MessageType.TERMINATE, null);
+                baseNode.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
+                receiverThread.join(); // received TERMINATE from base node
+            }
+
+        } catch (NumberFormatException | IOException | InterruptedException | ClassNotFoundException e) {
+            System.err.println("xxxxx---Processing error occured---xxxxx");
+            System.err.println(e.getMessage());
+            e.printStackTrace();
+        } finally {
+            if (nodes != null) {
+                for (Node node : nodes) {
+                    try {
+                        if (node.getChannel() != null) {
+                            node.getChannel().close();
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+
+    }
+
+    private static Node getNodeById(List<Node> nodes, int nodeId) throws InterruptedException {
+        for (Node node : nodes) {
+            if (node.getId() == nodeId) {
+                return node;
+            }
+        }
+        throw new InterruptedException("NODE NOT FOUND FROM NODE LIST -> NodeID: " + nodeId);
+    }
+
+    public static List<Node> processConfig() throws IOException {
+        List<Node> nodes = Collections.synchronizedList(new ArrayList<>());
+        List<String> allLines = Files.readAllLines(Paths.get(configPath));
+        int neighborIndex = 0;
+
+        // FIX BOM encoding for UTF-16 and UTF-8 config files
+        String firstLine = allLines.get(0);
+        if (firstLine.codePointAt(0) == 0xfeff) {
+            allLines.set(0, firstLine.substring(1, firstLine.length()));
+        }
+
+        for (String line : allLines) {
+            // System.out.println(line);
+
+            // remove inline comments
+            line = line.split("#")[0].trim();
+
+            if (!Constants.isConfigLineValid(line)){
+                continue;
+            }
+
+            if (nodeCount <= 0) {
+                // read global params
+                System.out.println("Global params: " + line);
+                String globalParamStrings[] = line.split(" ");
+                nodeCount = Integer.parseInt(globalParamStrings[0]);
+                minPerActive = Integer.parseInt(globalParamStrings[0]);
+                maxPerActive = Integer.parseInt(globalParamStrings[0]);
+                minSendDelay = Integer.parseInt(globalParamStrings[0]);
+                snapshotDelay = Integer.parseInt(globalParamStrings[0]);
+                maxNumber = Integer.parseInt(globalParamStrings[0]);
+            } else {
+                if (nodes.size() < nodeCount) {
+                    // read node entry
+                    String nodeInfo[] = line.split(" ");
+                    nodes.add(new Node(Integer.parseInt(nodeInfo[0]), nodeInfo[1], Integer.parseInt(nodeInfo[2])));
+                } else {
+                    // read neighbour entry
+                    nodes.get(neighborIndex).addNeighbors(line);
+                    neighborIndex++;
+                }
+            }
+        }
+
+        System.out.println("***PRINTING NODE CONFIG***");
+        for (Node node : nodes) {
+            node.printConfig();
+        }
+
+        // generate outputPath for this node
+        outputPath = configPath;
+        if(outputPath.endsWith(".txt")){
+            outputPath = outputPath.substring(0, outputPath.length() - 4);
+        }
+        outputPath = outputPath + "-" + nodeId + ".out";
+        System.out.println("TEMP: output file location: " + outputPath);
+
+        return nodes;
+    }
+}

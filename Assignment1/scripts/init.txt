@@ -5,3 +5,6 @@ sudo update-alternatives --config javac
 
 # java compile to class
 javac -d ./bin ./code/Runner.java
+
+# java run
+java -cp ./bin code.Runner 2
