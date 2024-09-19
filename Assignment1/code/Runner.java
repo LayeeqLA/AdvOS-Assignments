@@ -15,7 +15,6 @@ public class Runner {
 
     private static int nodeCount = -1; // T1
     private static int nodeId;
-    private static int nodesConnected = 0;
     private static int minPerActive; // T2
     private static int maxPerActive; // T3
     private static int minSendDelay; // T4
@@ -25,7 +24,7 @@ public class Runner {
     private static String outputPath;
 
     public static void main(String[] args) {
-        System.out.println("Initializing Service!");
+        System.out.println("*****Initializing Service*****");
 
         if (args.length != 2) {
             System.err.println("Need exactly TWO args!");
@@ -41,22 +40,22 @@ public class Runner {
 
             nodes = processConfig();
             Node currentNode = getNodeById(nodes, nodeId);
-            System.out.println("****CURRENT NODE****");
+            System.out.println("\n****CURRENT NODE****");
             currentNode.printConfig();
-            System.exit(0);
 
-            Thread receiverThread = new Thread(new SocketService(currentNode, nodes.size() - 1));
+            System.out.println("\n*****Starting connectivity activies*****");
+            Thread receiverThread = new Thread(new SocketService(currentNode,
+                    minPerActive, maxPerActive, minSendDelay, snapshotDelay, maxNumber));
+            // TODO: remove if above params not required in receiver thread
             receiverThread.start();
 
-            for (Node node : nodes) {
-                if (node == currentNode) {
-                    continue;
-                }
+            List<Node> neighborNodes = currentNode.getNeighbors(nodes);
+            for (Node node : neighborNodes) {
                 int attempts = 0;
                 while (node.getChannel() == null && attempts < Constants.CONNECT_MAX_ATTEMPTS) {
                     try {
                         InetSocketAddress addr = new InetSocketAddress(node.getHost(), node.getPort());
-                        Thread.sleep(3000);
+                        Thread.sleep(3000); // connection refused fix
                         SctpChannel sc = SctpChannel.open(addr, 0, 0);
                         node.setChannel(sc);
                         System.out.println("Connected successfully to node " + node.getId());
@@ -75,41 +74,27 @@ public class Runner {
             }
 
             int count = 0;
-            while (count < Constants.MAX_MESSAGES) {
-                Thread.sleep(Constants.getRandomWait());
+            while (count < maxNumber) {
+                Thread.sleep(minSendDelay);
                 Message currentMessage = new Message(currentNode.getId(), Message.MessageType.DATA,
                         Constants.getRandomBroadcastInt());
                 currentMessage.print();
                 count++;
-                for (Node node : nodes) {
-                    if (node == currentNode) {
-                        continue;
-                    }
+                System.out.println("Message send count: " + count);
+                for (Node node : neighborNodes) {
                     MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0); // MessageInfo for SCTP layer
                     node.getChannel().send(currentMessage.toByteBuffer(), messageInfo);
                 }
             }
 
-            if (currentNode.getId() == Constants.BASE_NODE) {
-                // received FINISH from ALL
-                receiverThread.join();
+            Message finishMessage = new Message(currentNode.getId(), Message.MessageType.FINISH, null);
+            for (Node node : neighborNodes) {
                 MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0); // MessageInfo for SCTP layer
-                Message terminateMessage = new Message(currentNode.getId(), Message.MessageType.TERMINATE, null);
-                for (Node node : nodes) {
-                    if (node == currentNode) {
-                        continue;
-                    }
-                    node.getChannel().send(terminateMessage.toByteBuffer(), messageInfo);
-                    Thread.sleep(2000);
-                    node.getChannel().close(); // TODO: check for any issues before msg is read by other processes
-                }
-            } else {
-                Node baseNode = getNodeById(nodes, Constants.BASE_NODE);
-                MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0); // MessageInfo for SCTP layer
-                Message finishMessage = new Message(currentNode.getId(), Message.MessageType.TERMINATE, null);
-                baseNode.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
-                receiverThread.join(); // received TERMINATE from base node
+                node.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
             }
+
+            receiverThread.join(); // received FINISH from all neighbors
+            System.out.println("\n*****END*****");
 
         } catch (NumberFormatException | IOException | InterruptedException | ClassNotFoundException e) {
             System.err.println("xxxxx---Processing error occured---xxxxx");
@@ -157,7 +142,7 @@ public class Runner {
             // remove inline comments
             line = line.split("#")[0].trim();
 
-            if (!Constants.isConfigLineValid(line)){
+            if (!Constants.isConfigLineValid(line)) {
                 continue;
             }
 
@@ -166,11 +151,11 @@ public class Runner {
                 System.out.println("Global params: " + line);
                 String globalParamStrings[] = line.split(" ");
                 nodeCount = Integer.parseInt(globalParamStrings[0]);
-                minPerActive = Integer.parseInt(globalParamStrings[0]);
-                maxPerActive = Integer.parseInt(globalParamStrings[0]);
-                minSendDelay = Integer.parseInt(globalParamStrings[0]);
-                snapshotDelay = Integer.parseInt(globalParamStrings[0]);
-                maxNumber = Integer.parseInt(globalParamStrings[0]);
+                minPerActive = Integer.parseInt(globalParamStrings[1]);
+                maxPerActive = Integer.parseInt(globalParamStrings[2]);
+                minSendDelay = Integer.parseInt(globalParamStrings[3]);
+                snapshotDelay = Integer.parseInt(globalParamStrings[4]);
+                maxNumber = Integer.parseInt(globalParamStrings[5]);
             } else {
                 if (nodes.size() < nodeCount) {
                     // read node entry
@@ -191,7 +176,7 @@ public class Runner {
 
         // generate outputPath for this node
         outputPath = configPath;
-        if(outputPath.endsWith(".txt")){
+        if (outputPath.endsWith(".txt")) {
             outputPath = outputPath.substring(0, outputPath.length() - 4);
         }
         outputPath = outputPath + "-" + nodeId + ".out";
