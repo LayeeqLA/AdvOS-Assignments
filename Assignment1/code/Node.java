@@ -1,6 +1,9 @@
 package code;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import com.sun.nio.sctp.SctpChannel;
 
@@ -61,6 +64,10 @@ public class Node {
 
     public void addNeighbors(String allNeighbors) {
         neighbors = Arrays.stream(allNeighbors.split(" ")).mapToInt(Integer::parseInt).toArray();
+    }
+
+    public List<Node> getNeighbors(List<Node> nodes) {
+        return Arrays.stream(neighbors).mapToObj(nodes::get).collect(Collectors.toList());
     }
 
 }
