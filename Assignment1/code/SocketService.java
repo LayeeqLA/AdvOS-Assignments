@@ -3,11 +3,16 @@ package code;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 
 import com.sun.nio.sctp.SctpChannel;
 import com.sun.nio.sctp.SctpServerChannel;
@@ -22,17 +27,21 @@ public class SocketService implements Runnable {
     private int minSendDelay; // T4
     private int snapshotDelay; // T5
     private int maxNumber; // T6 -> maxNoOfMessagesThatCanBeSent
+    private CountDownLatch latch;
+    private AliveProbe nodeStatus;
     private List<Thread> neighborThreads;
     private Map<Integer, Integer> receivedInfo;
 
     public SocketService(Node selfNode, int minPerActive, int maxPerActive, int minSendDelay,
-            int snapshotDelay, int maxNumber) {
+            int snapshotDelay, int maxNumber, CountDownLatch latch, AliveProbe nodeStatus) {
         this.selfNode = selfNode;
         this.minPerActive = minPerActive;
         this.maxPerActive = maxPerActive;
         this.minSendDelay = minSendDelay;
         this.snapshotDelay = snapshotDelay;
         this.maxNumber = maxNumber;
+        this.latch = latch;
+        this.nodeStatus = nodeStatus;
     }
 
     @Override
@@ -50,10 +59,17 @@ public class SocketService implements Runnable {
 
             for (int i = 0; i < selfNode.getNeighbors().length; i++) {
                 SctpChannel clientConnection = ssc.accept();
-                Thread clientThread = new Thread(new ClientHandler(clientConnection, receivedInfo, maxNumber));
+                Thread clientThread = new Thread(new ClientHandler(clientConnection, receivedInfo, 
+                        latch, nodeStatus));
                 clientThread.start();
                 neighborThreads.add(clientThread);
             }
+
+            // inform sender thread all receivers are connected
+            latch.countDown();
+
+            // wait for send channel
+            latch.await();
 
             for (Thread clientThread : neighborThreads) {
                 clientThread.join();
@@ -80,12 +96,15 @@ public class SocketService implements Runnable {
 
         private final SctpChannel channel;
         private Map<Integer, Integer> receivedData;
-        private final int maxNumber;
+        private final CountDownLatch latch;
+        private AliveProbe nodeStatus;
 
-        public ClientHandler(SctpChannel channel, Map<Integer, Integer> receivedData, int maxNumber) {
+        public ClientHandler(SctpChannel channel, Map<Integer, Integer> receivedData,  
+                CountDownLatch latch, AliveProbe nodeStatus) {
             this.channel = channel;
             this.receivedData = receivedData;
-            this.maxNumber = maxNumber;
+            this.latch = latch;
+            this.nodeStatus = nodeStatus;
         }
 
         @Override
@@ -93,11 +112,15 @@ public class SocketService implements Runnable {
             try {
                 int recvCount = 0;
                 int pid = -1;
-                while (recvCount < maxNumber) {
+                
+                latch.await();  // wait for send connections to be ready
+                while (!nodeStatus.isTerminated()) {
                     // keep listening and receive incoming messages
                     ByteBuffer buf = ByteBuffer.allocateDirect(Constants.MAX_MSG_SIZE);
                     channel.receive(buf, null, null);
                     recvCount++;
+                    nodeStatus.setActive();                    
+
                     Message message = Message.fromByteBuffer(buf);
                     message.print();
                     if (pid == -1) {
@@ -108,19 +131,16 @@ public class SocketService implements Runnable {
                     }
                     if (message.getmType() == MessageType.DATA) {
                         receivedData.merge(message.getSender(), message.getData(), Integer::sum);
+                    // } else if (message.getmType() == MessageType.FINISH) {
+                    //     System.out.println("Received FINISH SINGAL from node " + pid);
+                    //     break;
                     } else {
                         System.out.println(message.getmType() + " unexpected!");
+                        break;
                     }
                 }
-
-                System.out.println("Waiting for FINISH SINGAL from node " + pid);
-                ByteBuffer buf = ByteBuffer.allocateDirect(Constants.MAX_MSG_SIZE);
-                channel.receive(buf, null, null);
-                Message message = Message.fromByteBuffer(buf);
-                assert message.getmType() == MessageType.FINISH;
-                System.out.println("Received FINISH SINGAL from node " + pid);
-
-            } catch (IOException | ClassNotFoundException e) {
+                System.out.println("Received " + recvCount + " messages from node " + pid);
+            } catch (IOException | ClassNotFoundException | InterruptedException e) {
                 System.err.println("xxxxx---CLIENT HANDLER ERROR---xxxxx");
                 System.err.println("THREAD: " + Thread.currentThread().getName());
                 System.err.println(e.getMessage());

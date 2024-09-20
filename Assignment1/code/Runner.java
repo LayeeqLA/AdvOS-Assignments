@@ -7,6 +7,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 import com.sun.nio.sctp.MessageInfo;
 import com.sun.nio.sctp.SctpChannel;
@@ -44,8 +45,12 @@ public class Runner {
             currentNode.printConfig();
 
             System.out.println("\n*****Starting connectivity activies*****");
+            CountDownLatch latch = new CountDownLatch(2);
+            boolean initializeAsActive = nodeId == Constants.BASE_NODE;
+            AliveProbe nodeStatus = new AliveProbe(maxNumber, initializeAsActive);
             Thread receiverThread = new Thread(new SocketService(currentNode,
-                    minPerActive, maxPerActive, minSendDelay, snapshotDelay, maxNumber));
+                    minPerActive, maxPerActive, minSendDelay, snapshotDelay,
+                    maxNumber, latch, nodeStatus));
             // TODO: remove if above params not required in receiver thread
             receiverThread.start();
 
@@ -73,24 +78,47 @@ public class Runner {
                 }
             }
 
-            int count = 0;
-            while (count < maxNumber) {
-                Thread.sleep(minSendDelay);
-                Message currentMessage = new Message(currentNode.getId(), Message.MessageType.DATA,
-                        Constants.getRandomBroadcastInt());
-                currentMessage.print();
-                count++;
-                System.out.println("Message send count: " + count);
-                for (Node node : neighborNodes) {
-                    MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0); // MessageInfo for SCTP layer
-                    node.getChannel().send(currentMessage.toByteBuffer(), messageInfo);
+            // inform send channels setup
+            latch.countDown();
+            // wait for all receiver channels to be initialized
+            latch.await();
+            System.out.println("*****CONNECTIONS READY*****\n");
+
+            int neighborCount = neighborNodes.size();
+            while (!nodeStatus.isTerminated()) {
+                while (nodeStatus.isAlive()) {
+                    int messagesToSend = Constants.getRandomNumber(minPerActive, maxPerActive);
+                    for (int i = 0; i < messagesToSend; i++) {
+
+                        // choose random neighbor
+                        int destinationIndex = Constants.getRandomNumber(0, neighborCount - 1);
+                        Node destinationNode = neighborNodes.get(destinationIndex);
+                        Message currentMessage = new Message(currentNode.getId(), Message.MessageType.DATA,
+                                Constants.getRandomBroadcastInt());
+                        currentMessage.print();
+
+                        // send to chosen neighbor
+                        MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
+                        destinationNode.getChannel().send(currentMessage.toByteBuffer(), messageInfo);
+                        nodeStatus.increment();
+                        System.out.println("Message #" + nodeStatus.getMessageCount() + " sent to node "
+                                + destinationNode.getId());
+
+                        // minSendDelay
+                        Thread.sleep(minSendDelay);
+                    }
+                    nodeStatus.setPassive();
                 }
             }
 
-            Message finishMessage = new Message(currentNode.getId(), Message.MessageType.FINISH, null);
-            for (Node node : neighborNodes) {
-                MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0); // MessageInfo for SCTP layer
-                node.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
+            // Message finishMessage = new Message(currentNode.getId(), Message.MessageType.FINISH, null);
+            // for (Node node : neighborNodes) {
+            //     MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
+            //     node.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
+            // }
+
+            for(Node node: neighborNodes) {
+                node.getChannel().close();
             }
 
             receiverThread.join(); // received FINISH from all neighbors
