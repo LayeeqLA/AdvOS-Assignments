@@ -12,15 +12,18 @@ public class Message implements Serializable {
     private Integer sender;
     private MessageType mType;
     private Integer data;
+    private VectorClock clock;
 
-    public Message(Integer sender, MessageType mType, Integer data) {
+    public Message(Integer sender, MessageType mType, Integer data, VectorClock clock) {
         this.sender = sender;
         this.mType = mType;
         this.data = data;
+        this.clock = clock;
     }
 
     public enum MessageType {
-        DATA,
+        APP,
+        MARKER,
         FINISH,
         TERMINATE,
         INVALID,
@@ -50,6 +53,10 @@ public class Message implements Serializable {
 
     public void setData(Integer data) {
         this.data = data;
+    }
+
+    public VectorClock getClock() {
+        return clock;
     }
 
     // Convert current instance of Message to ByteBuffer
@@ -92,7 +99,9 @@ public class Message implements Serializable {
     }
 
     public void print() {
-        System.out.println("Sender: " + sender + " MsgType: " + mType + " Data: " + (data != null ? data : "null"));
+        System.out.println("Sender: " + sender + " MsgType: " + mType 
+                + " Data: " + (data != null ? data : "null")
+                + " Clock: " + (clock != null ? clock.toString() : "null"));
     }
 
 }

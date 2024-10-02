@@ -48,12 +48,14 @@ public class Runner {
             CountDownLatch latch = new CountDownLatch(2);
             boolean initializeAsActive = nodeId == Constants.BASE_NODE;
             AliveProbe nodeStatus = new AliveProbe(maxNumber, initializeAsActive);
+            VectorClock localClock = new VectorClock(nodeCount);
             Thread receiverThread = new Thread(new SocketService(currentNode,
                     minPerActive, maxPerActive, minSendDelay, snapshotDelay,
-                    maxNumber, latch, nodeStatus));
+                    maxNumber, latch, nodeStatus, localClock));
             // TODO: remove if above params not required in receiver thread
             receiverThread.start();
 
+            Thread.sleep(10000); // TODO: temp
             List<Node> neighborNodes = currentNode.getNeighbors(nodes);
             for (Node node : neighborNodes) {
                 int attempts = 0;
@@ -93,9 +95,14 @@ public class Runner {
                         // choose random neighbor
                         int destinationIndex = Constants.getRandomNumber(0, neighborCount - 1);
                         Node destinationNode = neighborNodes.get(destinationIndex);
-                        Message currentMessage = new Message(currentNode.getId(), Message.MessageType.DATA,
-                                Constants.getRandomBroadcastInt());
-                        currentMessage.print();
+
+                        Message currentMessage = null;
+                        synchronized(localClock) {
+                            localClock.incrementAndGet(currentNode.getId());
+                            currentMessage = new Message(currentNode.getId(), Message.MessageType.APP,
+                                Constants.getRandomBroadcastInt(), localClock);
+                            currentMessage.print();
+                        }
 
                         // send to chosen neighbor
                         MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
