@@ -29,14 +29,12 @@ public class SocketService implements Runnable {
     private int snapshotDelay; // T5
     private int maxNumber; // T6 -> maxNoOfMessagesThatCanBeSent
     private CountDownLatch latch;
-    private AliveProbe nodeStatus;
-    private VectorClock localClock;
+    private LocalState localState;
     private List<Thread> neighborThreads;
     private Map<Integer, Integer> receivedInfo;
 
     public SocketService(Node selfNode, int minPerActive, int maxPerActive, int minSendDelay,
-            int snapshotDelay, int maxNumber, CountDownLatch latch, AliveProbe nodeStatus,
-            VectorClock localClock) {
+            int snapshotDelay, int maxNumber, CountDownLatch latch, LocalState state) {
         this.selfNode = selfNode;
         this.minPerActive = minPerActive;
         this.maxPerActive = maxPerActive;
@@ -44,8 +42,7 @@ public class SocketService implements Runnable {
         this.snapshotDelay = snapshotDelay;
         this.maxNumber = maxNumber;
         this.latch = latch;
-        this.nodeStatus = nodeStatus;
-        this.localClock = localClock;
+        this.localState = state;
     }
 
     @Override
@@ -63,8 +60,8 @@ public class SocketService implements Runnable {
 
             for (int i = 0; i < selfNode.getNeighbors().length; i++) {
                 SctpChannel clientConnection = ssc.accept();
-                Thread clientThread = new Thread(new ClientHandler(selfNode, clientConnection, receivedInfo, 
-                        latch, nodeStatus, localClock));
+                Thread clientThread = new Thread(new ClientHandler(selfNode, clientConnection, receivedInfo,
+                        latch, localState));
                 clientThread.start();
                 neighborThreads.add(clientThread);
             }
@@ -102,17 +99,15 @@ public class SocketService implements Runnable {
         private final SctpChannel channel;
         private Map<Integer, Integer> receivedData;
         private final CountDownLatch latch;
-        private AliveProbe nodeStatus;
-        private VectorClock localClock;
+        private LocalState localState;
 
-        public ClientHandler(Node currentNode, SctpChannel channel, Map<Integer, Integer> receivedData,  
-                CountDownLatch latch, AliveProbe nodeStatus, VectorClock localClock) {
+        public ClientHandler(Node currentNode, SctpChannel channel, Map<Integer, Integer> receivedData,
+                CountDownLatch latch, LocalState localState) {
             this.currentNode = currentNode;
             this.channel = channel;
             this.receivedData = receivedData;
             this.latch = latch;
-            this.nodeStatus = nodeStatus;
-            this.localClock = localClock;
+            this.localState = localState;
         }
 
         @Override
@@ -120,15 +115,15 @@ public class SocketService implements Runnable {
             try {
                 int recvCount = 0;
                 int pid = -1;
-                
-                latch.await();  // wait for send connections to be ready
+
+                latch.await(); // wait for send connections to be ready
                 // TODO: while (!nodeStatus.isTerminated()) {
-                    
-                while(true) {// keep listening and receive incoming messages
+
+                while (true) {// keep listening and receive incoming messages
                     ByteBuffer buf = ByteBuffer.allocateDirect(Constants.MAX_MSG_SIZE);
                     channel.receive(buf, null, null);
                     recvCount++;
-                    nodeStatus.setActive();                    
+                    localState.setActive();
 
                     Message message = Message.fromByteBuffer(buf);
                     if (pid == -1) {
@@ -137,19 +132,21 @@ public class SocketService implements Runnable {
                         assert pid == message.getSender();
                         // SHOULD RECEIVE SAME SENDER PID ON A SINGLE THREAD
                     }
-                    if (message.getmType() == MessageType.APP) {
-                        synchronized(localClock){
+                    synchronized (localState) {
+                        if (message.getmType() == MessageType.APP) {
+
                             receivedData.merge(message.getSender(), message.getData(), Integer::sum);
                             VectorClock messageClock = message.getClock();
-                            localClock.mergeMessageClockAndIncrement(messageClock, currentNode.getId());
-                            localClock.print("After recv: ");
-                    }
-                    // } else if (message.getmType() == MessageType.FINISH) {
-                    //     System.out.println("Received FINISH SINGAL from node " + pid);
-                    //     break;
-                    } else {
-                        System.out.println(message.getmType() + " unexpected!");
-                        break;
+                            localState.getClock().mergeMessageClockAndIncrement(messageClock, currentNode.getId());
+                            localState.getClock().print("After recv: ");
+                        }
+                        // } else if (message.getmType() == MessageType.FINISH) {
+                        // System.out.println("Received FINISH SINGAL from node " + pid);
+                        // break;
+                        else {
+                            System.out.println(message.getmType() + " unexpected!");
+                            break;
+                        }
                     }
                 }
                 System.out.println("Received " + recvCount + " messages from node " + pid);

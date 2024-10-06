@@ -5,23 +5,28 @@ import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 import java.util.concurrent.CountDownLatch;
+// import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 import com.sun.nio.sctp.MessageInfo;
 import com.sun.nio.sctp.SctpChannel;
 
 public class Runner {
 
+    // private static int nodeId = -1;
     private static int nodeCount = -1; // T1
-    private static int nodeId;
     private static int minPerActive; // T2
     private static int maxPerActive; // T3
     private static int minSendDelay; // T4
     private static int snapshotDelay; // T5
     private static int maxNumber; // T6 -> maxNoOfMessagesThatCanBeSent
-    private static String configPath;
+    // private static String configPath;
     private static String outputPath;
 
     public static void main(String[] args) {
@@ -34,12 +39,11 @@ public class Runner {
 
         List<Node> nodes = null;
         try {
-            nodeId = Integer.parseInt(args[0]);
+            int nodeId = Integer.parseInt(args[0]);
+            String configPath = args[1];
             System.out.println("PID for this host: " + nodeId);
 
-            configPath = args[1];
-
-            nodes = processConfig();
+            nodes = processConfig(configPath, nodeId);
             Node currentNode = getNodeById(nodes, nodeId);
             System.out.println("\n****CURRENT NODE****");
             currentNode.printConfig();
@@ -47,11 +51,10 @@ public class Runner {
             System.out.println("\n*****Starting connectivity activies*****");
             CountDownLatch latch = new CountDownLatch(2);
             boolean initializeAsActive = nodeId == Constants.BASE_NODE;
-            AliveProbe nodeStatus = new AliveProbe(maxNumber, initializeAsActive);
-            VectorClock localClock = new VectorClock(nodeCount);
+            LocalState localState = new LocalState(maxNumber, initializeAsActive, nodeCount);
             Thread receiverThread = new Thread(new SocketService(currentNode,
                     minPerActive, maxPerActive, minSendDelay, snapshotDelay,
-                    maxNumber, latch, nodeStatus, localClock));
+                    maxNumber, latch, localState));
             // TODO: remove if above params not required in receiver thread
             receiverThread.start();
 
@@ -80,6 +83,9 @@ public class Runner {
                 }
             }
 
+            if (nodeId == Constants.BASE_NODE) {
+                Thread.sleep(4000);
+            }
             // inform send channels setup
             latch.countDown();
             // wait for all receiver channels to be initialized
@@ -87,8 +93,8 @@ public class Runner {
             System.out.println("*****CONNECTIONS READY*****\n");
 
             int neighborCount = neighborNodes.size();
-            while (!nodeStatus.isTerminated()) {
-                while (nodeStatus.isAlive()) {
+            while (!localState.isTerminated()) {
+                if (localState.isAlive()) {
                     int messagesToSend = Constants.getRandomNumber(minPerActive, maxPerActive);
                     for (int i = 0; i < messagesToSend; i++) {
 
@@ -97,38 +103,39 @@ public class Runner {
                         Node destinationNode = neighborNodes.get(destinationIndex);
 
                         Message currentMessage = null;
-                        synchronized(localClock) {
-                            localClock.incrementAndGet(currentNode.getId());
+                        synchronized (localState) {
+                            localState.getClock().incrementAndGet(currentNode.getId());
                             currentMessage = new Message(currentNode.getId(), Message.MessageType.APP,
-                                Constants.getRandomBroadcastInt(), localClock);
-                            currentMessage.print();
-                        }
+                                    Constants.getRandomBroadcastInt(), localState.getClock());
 
-                        // send to chosen neighbor
-                        MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
-                        destinationNode.getChannel().send(currentMessage.toByteBuffer(), messageInfo);
-                        nodeStatus.increment();
-                        System.out.println("Message #" + nodeStatus.getMessageCount() + " sent to node "
-                                + destinationNode.getId());
+                            // send to chosen neighbor
+                            MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
+                            destinationNode.getChannel().send(currentMessage.toByteBuffer(), messageInfo);
+                            localState.incrementMessageCount();
+                            currentMessage.print(" Destination: " + destinationIndex
+                                    + " MC: " + localState.getMessageCount());
+                        }
 
                         // minSendDelay
                         Thread.sleep(minSendDelay);
                     }
-                    nodeStatus.setPassive();
+                    localState.setPassive();
                 }
             }
 
-            // Message finishMessage = new Message(currentNode.getId(), Message.MessageType.FINISH, null);
+            // Message finishMessage = new Message(currentNode.getId(),
+            // Message.MessageType.FINISH, null);
             // for (Node node : neighborNodes) {
-            //     MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
-            //     node.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
+            // MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
+            // node.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
             // }
 
-            for(Node node: neighborNodes) {
+            receiverThread.join(); // received FINISH from all neighbors
+
+            for (Node node : neighborNodes) {
                 node.getChannel().close();
             }
 
-            receiverThread.join(); // received FINISH from all neighbors
             System.out.println("\n*****END*****");
 
         } catch (NumberFormatException | IOException | InterruptedException | ClassNotFoundException e) {
@@ -160,7 +167,7 @@ public class Runner {
         throw new InterruptedException("NODE NOT FOUND FROM NODE LIST -> NodeID: " + nodeId);
     }
 
-    public static List<Node> processConfig() throws IOException {
+    public static List<Node> processConfig(String configPath, int currentNodeId) throws IOException {
         List<Node> nodes = Collections.synchronizedList(new ArrayList<>());
         List<String> allLines = Files.readAllLines(Paths.get(configPath));
         int neighborIndex = 0;
@@ -204,19 +211,61 @@ public class Runner {
             }
         }
 
+        constructConvergeCastTree(nodes, currentNodeId);
+
         System.out.println("***PRINTING NODE CONFIG***");
         for (Node node : nodes) {
             node.printConfig();
         }
+        nodes.get(currentNodeId).printConvergeCast();
 
         // generate outputPath for this node
         outputPath = configPath;
         if (outputPath.endsWith(".txt")) {
             outputPath = outputPath.substring(0, outputPath.length() - 4);
         }
-        outputPath = outputPath + "-" + nodeId + ".out";
+        outputPath = outputPath + "-" + currentNodeId + ".out";
         System.out.println("TEMP: output file location: " + outputPath);
 
         return nodes;
+    }
+
+    public static void constructConvergeCastTree(List<Node> nodes, int runnerNodeId) {
+        assert nodeCount != -1;
+        // Node runningNode = nodes.get(nodeId);
+        boolean[] visited = new boolean[nodeCount]; // false by default
+        int[] parentId = new int[nodeCount];
+        Arrays.fill(parentId, -1);
+        Queue<Integer> queue = new LinkedList<>();
+        queue.add(Constants.BASE_NODE);
+        visited[Constants.BASE_NODE] = true;
+
+        while (!queue.isEmpty()) {
+            int currentNodeId = queue.remove();
+            Node currentNode = nodes.get(currentNodeId);
+            for (int neighborId : currentNode.getNeighbors()) {
+                if (!visited[neighborId]) {
+                    queue.add(neighborId);
+                    parentId[neighborId] = currentNodeId;
+                    visited[neighborId] = true;
+                }
+            }
+        }
+
+        // System.out.println("*** PARENT IDs ***");
+        // System.out.println(Arrays.toString(parentId));
+        // System.out.println("*** VISITED ***");
+        // System.out.println(Arrays.toString(visited));
+
+        // add array information to Node structures
+        Node currentNode = nodes.get(runnerNodeId);
+        if (runnerNodeId != Constants.BASE_NODE) {
+            // root node will have parent == null
+            currentNode.setParent(nodes.get(parentId[runnerNodeId]));
+        }
+
+        List<Node> childrenNodes = nodes.stream().filter(node -> parentId[node.getId()] == runnerNodeId)
+                .collect(Collectors.toList());
+        currentNode.setChildren(childrenNodes);
     }
 }

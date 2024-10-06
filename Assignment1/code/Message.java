@@ -99,9 +99,16 @@ public class Message implements Serializable {
     }
 
     public void print() {
-        System.out.println("Sender: " + sender + " MsgType: " + mType 
+        System.out.println("Sender: " + sender + " MsgType: " + mType
                 + " Data: " + (data != null ? data : "null")
                 + " Clock: " + (clock != null ? clock.toString() : "null"));
+    }
+
+    public void print(String postfix) {
+        System.out.println("Sender: " + sender + " MsgType: " + mType
+                + " Data: " + (data != null ? data : "null")
+                + " Clock: " + (clock != null ? clock.toString() : "null")
+                + postfix);
     }
 
 }
