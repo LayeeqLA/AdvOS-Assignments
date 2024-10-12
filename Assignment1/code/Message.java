@@ -7,23 +7,44 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class Message implements Serializable {
     private Integer sender;
     private MessageType mType;
     private Integer data;
     private VectorClock clock;
+    private List<StateRecord> stateRecords;
 
     public Message(Integer sender, MessageType mType, Integer data, VectorClock clock) {
+        // For APP
         this.sender = sender;
         this.mType = mType;
         this.data = data;
         this.clock = clock;
     }
 
+    public Message(Integer sender, MessageType mType) {
+        // For Marker or Convergecast
+        this.sender = sender;
+        this.mType = mType;
+    }
+
+    public Message(Integer sender, MessageType mType, List<StateRecord> records) {
+        // For Marker or Convergecast
+        this.sender = sender;
+        this.mType = mType;
+        this.stateRecords = records;
+    }
+
     public enum MessageType {
         APP,
         MARKER,
+        CC,
         FINISH,
         TERMINATE,
         INVALID,
@@ -57,6 +78,10 @@ public class Message implements Serializable {
 
     public VectorClock getClock() {
         return clock;
+    }
+
+    public List<StateRecord> getStateRecords() {
+        return stateRecords;
     }
 
     // Convert current instance of Message to ByteBuffer
@@ -99,16 +124,38 @@ public class Message implements Serializable {
     }
 
     public void print() {
-        System.out.println("Sender: " + sender + " MsgType: " + mType
-                + " Data: " + (data != null ? data : "null")
-                + " Clock: " + (clock != null ? clock.toString() : "null"));
+        switch (mType) {
+            case APP:
+                System.out.println("Sender: " + sender + " MsgType: " + mType
+                        + " Data: " + data + " Clock: " + clock.toString());
+                break;
+            case MARKER:
+                System.out.println("Sender: " + sender + " MsgType: " + mType);
+                break;
+            case CC:
+                System.out.println("Sender: " + sender + " MsgType: " + mType + " StateRecords: "
+                        + stateRecords.stream().map(StateRecord::toString).collect(Collectors.joining()));
+                break;
+            default:
+                break;
+        }
     }
 
     public void print(String postfix) {
-        System.out.println("Sender: " + sender + " MsgType: " + mType
-                + " Data: " + (data != null ? data : "null")
-                + " Clock: " + (clock != null ? clock.toString() : "null")
-                + postfix);
+        switch (mType) {
+            case APP:
+                System.out.println("Sender: " + sender + " MsgType: " + mType
+                        + " Data: " + data + " Clock: " + clock.toString() + postfix);
+                break;
+            case MARKER:
+                System.out.println("Sender: " + sender + " MsgType: " + mType + postfix);
+                break;
+            case CC:
+                System.out.println("Sender: " + sender + " MsgType: " + mType
+                        + " StateRecords: "
+                        + stateRecords.stream().map(StateRecord::toString).collect(Collectors.joining()) + postfix);
+                break;
+        }
     }
 
 }

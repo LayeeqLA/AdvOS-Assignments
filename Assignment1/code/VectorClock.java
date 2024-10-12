@@ -17,6 +17,15 @@ public class VectorClock extends AtomicIntegerArray {
         super(arr);
     }
 
+    public static VectorClock copy(VectorClock vc) {
+        // deep copy
+        VectorClock clockCopy = new VectorClock(vc.length());
+        for(int i=0; i<vc.length(); i++) {
+            clockCopy.set(i, vc.get(i));
+        }
+        return clockCopy;
+    }
+
     public boolean concurrent(VectorClock v2) {
         return !this.lessThan(v2) && !v2.lessThan(this);
     }

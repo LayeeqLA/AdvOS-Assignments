@@ -13,7 +13,8 @@ public class Node {
     private String host;
     private int port;
     private SctpChannel channel;
-    private int[] neighbors;
+    private int[] neighborIds;
+    private List<Node> neighbors;
     private Node parent;
     private List<Node> children;
     private int[] childrenIds;
@@ -50,8 +51,8 @@ public class Node {
         this.channel = channel;
     }
 
-    public int[] getNeighbors() {
-        return neighbors;
+    public int[] getNeighborIds() {
+        return neighborIds;
     }
 
     public Node getParent() {
@@ -85,7 +86,7 @@ public class Node {
 
     public void printConfig() {
         System.out.println("ID: " + id + " HOST: " + host + " PORT: " + port
-                + " Neighbors: " + Arrays.toString(neighbors));
+                + " Neighbors: " + Arrays.toString(neighborIds));
     }
 
     public void printConvergeCast() {
@@ -93,12 +94,28 @@ public class Node {
                 + " Children: " + Arrays.toString(childrenIds));
     }
 
-    public void addNeighbors(String allNeighbors) {
-        neighbors = Arrays.stream(allNeighbors.split(" ")).mapToInt(Integer::parseInt).toArray();
+    public void addNeighborIds(String allNeighbors) {
+        neighborIds = Arrays.stream(allNeighbors.split(" ")).mapToInt(Integer::parseInt).toArray();
     }
 
-    public List<Node> getNeighbors(List<Node> nodes) {
-        return Arrays.stream(neighbors).mapToObj(nodes::get).collect(Collectors.toList());
+    public void setNeighbors(List<Node> nodes) {
+        this.neighbors = Arrays.stream(neighborIds).mapToObj(nodes::get).collect(Collectors.toList());
+    }
+
+    public static Node getNodeById(List<Node> nodes, int nodeId) {
+        return nodes.stream().filter(n -> n.getId() == nodeId).findFirst().orElseGet(null);
+    }
+
+    public List<Node> getNeighbors() {
+        return neighbors;
+    }
+
+    public int getNeighborCount() {
+        return neighborIds.length;
+    }
+
+    public int getChildrenCount() {
+        return childrenIds.length;
     }
 
 }
