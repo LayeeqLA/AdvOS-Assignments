@@ -1,5 +1,6 @@
 package code;
 
+import java.io.FileWriter;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
@@ -17,7 +18,7 @@ import com.sun.nio.sctp.MessageInfo;
 import com.sun.nio.sctp.SctpChannel;
 
 public class Runner {
-;
+    ;
     private static int nodeCount = -1; // T1
     private static int minPerActive; // T2
     private static int maxPerActive; // T3
@@ -49,12 +50,9 @@ public class Runner {
             boolean initializeAsActive = nodeId == Constants.BASE_NODE;
             LocalState localState = new LocalState(maxNumber, initializeAsActive, nodeCount);
             Thread receiverThread = new Thread(new SocketService(currentNode,
-                    minPerActive, maxPerActive, minSendDelay, snapshotDelay,
-                    maxNumber, latch, localState), "RECV-SRVC");
-            // TODO: remove if above params not required in receiver thread
+                     latch, localState), "RECV-SRVC");
             receiverThread.start();
 
-            Thread.sleep(4000); // TODO: temp
             for (Node node : currentNode.getNeighbors()) {
                 int attempts = 0;
                 while (node.getChannel() == null && attempts < Constants.CONNECT_MAX_ATTEMPTS) {
@@ -86,12 +84,12 @@ public class Runner {
 
             if (nodeId == Constants.BASE_NODE) {
                 Thread.sleep(4000);
-                SnapshotService.snapshotDelay = snapshotDelay;
-                new Thread(new SnapshotService(localState, currentNode), "SNAP-SRVC").start();
+                SnapshotStarter.snapshotDelay = snapshotDelay;
+                new Thread(new SnapshotStarter(localState, currentNode), "SNAP-SRVC").start();
             }
 
             while (!localState.isMapTerminated()) {
-                if (localState.isAlive()) {
+                if (localState.isSystemActive()) {
                     int messagesToSend = Constants.getRandomNumber(minPerActive, maxPerActive);
                     for (int i = 0; i < messagesToSend; i++) {
 
@@ -116,24 +114,28 @@ public class Runner {
                         // minSendDelay
                         Thread.sleep(minSendDelay);
                     }
-                    localState.setPassive();
+                    localState.setSystemPassive();
                 }
             }
 
+            // WAIT FOR SNAPSHOT TO INFORM TERMINATION OF SYSTEM
+            localState.getTerminationLatch().await();
+
             if (nodeId == Constants.BASE_NODE) {
-                localState.getTerminationLatch().await();
                 Message finishMessage = new Message(currentNode.getId(), Message.MessageType.FINISH);
                 for (Node node : currentNode.getChildren()) {
                     MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
                     node.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
                 }
+                System.out.println("\n---Sent FINISH to child node if any---");
+                receiverThread.join(); // received FINISH from all neighbors
             }
-
-            receiverThread.join(); // received FINISH from all neighbors
 
             for (Node node : currentNode.getNeighbors()) {
                 node.getChannel().close();
             }
+
+            receiverThread.join(); // received FINISH from all neighbors
 
             System.out.println("\n*****END*****");
 
@@ -152,6 +154,9 @@ public class Runner {
                         e.printStackTrace();
                     }
                 }
+            }
+            if (currentNode != null) {
+                currentNode.closeFileWriter();
             }
         }
 
@@ -217,7 +222,8 @@ public class Runner {
             outputPath = outputPath.substring(0, outputPath.length() - 4);
         }
         outputPath = outputPath + "-" + currentNodeId + ".out";
-        System.out.println("TEMP: output file location: " + outputPath);
+        System.out.println("Output file location: " + outputPath);
+        currentNode.initWriter(outputPath);
 
         currentNode.setNeighbors(nodes);
         return currentNode;

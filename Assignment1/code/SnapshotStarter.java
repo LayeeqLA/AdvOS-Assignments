@@ -4,29 +4,33 @@ import java.io.IOException;
 
 import com.sun.nio.sctp.MessageInfo;
 
-public class SnapshotService implements Runnable {
+public class SnapshotStarter implements Runnable {
 
-    // private static boolean firstSendCompleted = false;
     public static int snapshotDelay;
+    private static boolean notFirstSnapshot;
     private LocalState localState;
     private Node currentNode;
-    private boolean root;
 
-    public SnapshotService(LocalState localState, Node currentNode) {
+    public SnapshotStarter(LocalState localState, Node currentNode) {
         this.localState = localState;
         this.currentNode = currentNode;
-        this.root = currentNode.getParent() == null;
     }
 
     @Override
     public void run() {
+        // MUST BE USED ONLY FOR ROOT NODE
+        assert currentNode.getParent() == null;
+
         try {
-            if (root) {
+            if (notFirstSnapshot) {
                 System.out.println("---ROOT IS WAITING FOR A snapshotDelay PERIOD---");
                 Thread.sleep(snapshotDelay);
+            } else {
+                notFirstSnapshot = true;
             }
             synchronized (localState) {
-                assert !localState.isSnapshotActive(); // should not be active
+                localState.setSnapshotActive(currentNode.getId(), null, currentNode.getNeighborIds());
+                currentNode.writeLocalState(localState.getClock());
                 // send marker message to all neighbors
                 Message markerMessage = new Message(currentNode.getId(), Message.MessageType.MARKER);
                 for (Node neighbor : currentNode.getNeighbors()) {
@@ -36,7 +40,7 @@ public class SnapshotService implements Runnable {
                 }
             }
         } catch (IOException | InterruptedException | ClassNotFoundException e) {
-            System.err.println("===ERROR IN SNAPSHOT SERVICE===");
+            System.err.println("===ERROR IN SNAPSHOT STARTER===");
             e.printStackTrace();
         }
     }

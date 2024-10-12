@@ -10,8 +10,8 @@ javac -d ./bin ./code/Runner.java
 java -cp ./bin code.Runner 2 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt
 
 
-java -cp ./bin code.Runner 0 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt
-java -cp ./bin code.Runner 1 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt
-java -cp ./bin code.Runner 2 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt
-java -cp ./bin code.Runner 3 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt
-java -cp ./bin code.Runner 4 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt
+java -ea -cp ./bin code.Runner 0 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt
+java -ea -cp ./bin code.Runner 1 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt
+java -ea -cp ./bin code.Runner 2 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt
+java -ea -cp ./bin code.Runner 3 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt
+java -ea -cp ./bin code.Runner 4 /mnt/c/Users/layqa/Desktop/2024_Fall/CS6378-AOS/AdvOS-Assignments/Assignment1/config-local.txt

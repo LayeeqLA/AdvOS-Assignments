@@ -4,17 +4,20 @@ import java.io.Serializable;
 
 public class StateRecord implements Serializable {
     private int pid;
-    private VectorClock clock;
+    private boolean isNodeMapActive;
     private boolean areAllChannelsEmpty;
 
-    public StateRecord(int pid, VectorClock clock, boolean areAllChannelsEmpty) {
+    public StateRecord(int pid, boolean isNodeMapActive) {
         this.pid = pid;
-        this.clock = VectorClock.copy(clock);
-        this.areAllChannelsEmpty = areAllChannelsEmpty;
+        this.isNodeMapActive = isNodeMapActive;
     }
 
-    public VectorClock getClock() {
-        return clock;
+    public boolean isNodeMapActive() {
+        return isNodeMapActive;
+    }
+
+    public void setIsNodeActive(boolean isNodeMapActive) {
+        this.isNodeMapActive = isNodeMapActive;
     }
 
     public boolean areAllChannelsEmpty() {
@@ -27,7 +30,8 @@ public class StateRecord implements Serializable {
 
     @Override
     public String toString() {
-        return "StateRecord [pid=" + pid + ", clock=" + clock.toString() + ", areAllChannelsEmpty=" + areAllChannelsEmpty + "]";
+        return "StateRecord [pid=" + pid + ", isNodeMapActive=" + isNodeMapActive
+                + ", areAllChannelsEmpty=" + areAllChannelsEmpty + "] ";
     }
 
 }

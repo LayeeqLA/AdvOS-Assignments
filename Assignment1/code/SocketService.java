@@ -19,24 +19,13 @@ import code.Message.MessageType;
 public class SocketService implements Runnable {
 
     private Node selfNode;
-    private int minPerActive; // T2
-    private int maxPerActive; // T3
-    private int minSendDelay; // T4
-    private int snapshotDelay; // T5
-    private int maxNumber; // T6 -> maxNoOfMessagesThatCanBeSent
     private CountDownLatch latch;
     private LocalState localState;
     private List<Thread> neighborThreads;
     private Map<Integer, Integer> receivedInfo;
 
-    public SocketService(Node selfNode, int minPerActive, int maxPerActive, int minSendDelay,
-            int snapshotDelay, int maxNumber, CountDownLatch latch, LocalState state) {
+    public SocketService(Node selfNode, CountDownLatch latch, LocalState state) {
         this.selfNode = selfNode;
-        this.minPerActive = minPerActive;
-        this.maxPerActive = maxPerActive;
-        this.minSendDelay = minSendDelay;
-        this.snapshotDelay = snapshotDelay;
-        this.maxNumber = maxNumber;
         this.latch = latch;
         this.localState = state;
     }
@@ -72,7 +61,7 @@ public class SocketService implements Runnable {
                 clientThread.join();
             }
 
-            printReceivedInformation();
+            // printReceivedInformation();
             ssc.close();
 
         } catch (IOException | InterruptedException e) {
@@ -113,13 +102,19 @@ public class SocketService implements Runnable {
 
                 latch.await(); // wait for send connections to be ready
 
-                while (true) {
+                boolean receiving = true;
+                while (receiving) {
                     // keep listening and receive incoming messages
                     ByteBuffer buf = ByteBuffer.allocateDirect(Constants.MAX_MSG_SIZE);
                     channel.receive(buf, null, null);
 
                     Message message = Message.fromByteBuffer(buf);
+                    if (message == null) {
+                        // neighbor is closing this connection
+                        break;
+                    }
                     if (pid == -1) {
+                        // first message from neighbor
                         pid = message.getSender();
                         Thread.currentThread().setName("RECEIVER-" + pid);
                     } else {
@@ -127,65 +122,83 @@ public class SocketService implements Runnable {
                         // SHOULD RECEIVE SAME SENDER PID ON A SINGLE THREAD
                     }
                     synchronized (localState) {
-                        if (message.getmType() == MessageType.APP) {
-                            localState.setActive();
-                            localState.addChannelMessage(pid);
-                            receivedData.merge(message.getSender(), message.getData(), Integer::sum);
-                            VectorClock messageClock = message.getClock();
-                            localState.getClock().mergeMessageClockAndIncrement(messageClock, currentNode.getId());
-                            localState.getClock().print("After recv: ");
-                        }
-                        // } else if (message.getmType() == MessageType.FINISH) {
-                        // System.out.println("Received FINISH SINGAL from node " + pid);
-                        // break;
-                        else if (message.getmType() == MessageType.MARKER) {
-                            System.out.println("MARKER RECVD FROM " + pid);
-                            if (localState.isSnapshotActive()) {
-                                // CASE 2: Snapshot processing is active
-                                localState.addMarkerReceivedAndGet(pid);
-                            } else {
-                                // CASE 1: Snapshot processing is not active
-                                // This marker message starts the snapshot process
-                                // also records this channel as marked
-                                localState.setSnapshotActive(currentNode.getId(), pid, currentNode.getNeighborIds());
-                                localState.addMarkerReceivedAndGet(pid);
-                                new Thread(new SnapshotService(localState, currentNode), "SNAP-SRVC").start(); 
-                            }
+                        switch (message.getmType()) {
+                            case APP:
+                                localState.setSystemActive();
+                                localState.addChannelAppMessage(pid);
+                                receivedData.merge(message.getSender(), message.getData(), Integer::sum);
+                                synchronized (localState) {
+                                    VectorClock messageClock = message.getClock();
+                                    localState.getClock().mergeMessageClockAndIncrement(messageClock,
+                                            currentNode.getId());
+                                    localState.getClock().print("After recv: ");
+                                }
+                                break;
 
-                            // CHECK IF ALL MARKERS RECEIVED
-                            if (localState.getMarkerCount() == currentNode.getNeighborCount()) {
-                                // LOCAL SNAPSHOT PROCESS FINISHED; CC DUE;
-                                localState.setSnapshotInactive();
-                            }
+                            case MARKER:
+                                System.out.println("MARKER RECVD FROM " + pid);
+                                if (localState.isSnapshotActive()) {
+                                    // CASE 1: Snapshot processing is active
+                                    localState.addMarkerReceived(pid);
+                                } else {
+                                    // CASE 1: Snapshot processing is not active
+                                    // This marker message starts the local snapshot process
+                                    // also records this channel as marked
+                                    localState.setSnapshotActive(currentNode.getId(), pid,
+                                            currentNode.getNeighborIds());
+                                    currentNode.writeLocalState(localState.getClock());
+                                    localState.addMarkerReceived(pid);
 
-                            // CHECK IF READY FOR CC TO PARENT
-                            if (localState.getChildRecordsLength() == currentNode.getChildrenCount()
-                                    && !localState.isSnapshotActive()) {
-                                sendConvergeCastToParent(selfNode, localState);
-                                localState.clearSnapshotData(); // done with snapshot
-                            }
-                        
-                        } else if (message.getmType() == MessageType.CC) {
-                            message.print();
-                            int childRecordCount = localState.addChildRecordAndGet(pid, message.getStateRecords());
-                            if (childRecordCount == currentNode.getChildrenCount()
-                                    && !localState.isSnapshotActive()) {
-                                sendConvergeCastToParent(selfNode, localState);
-                                localState.clearSnapshotData(); // done with snapshot
-                            }
-                        
-                        } else if (message.getmType() == MessageType.FINISH) {
-                            assert localState.isMapTerminated() && localState.isSystemTerminated();
-                            Message finishMessage = new Message(currentNode.getId(), Message.MessageType.FINISH);
-                            for (Node node : currentNode.getChildren()) {
-                                MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
-                                node.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
-                            }
-                            break;  // stop listening to messages
+                                    // send marker message to all neighbors
+                                    Message markerMessage = new Message(currentNode.getId(),
+                                            Message.MessageType.MARKER);
+                                    for (Node neighbor : currentNode.getNeighbors()) {
+                                        MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
+                                        neighbor.getChannel().send(markerMessage.toByteBuffer(), messageInfo);
+                                        System.out.println("Marker Message sent to pid " + neighbor.getId());
+                                    }
+                                }
 
-                        } else {
-                            System.out.println(message.getmType() + " unexpected!");
-                            break;
+                                // CHECK IF ALL MARKERS RECEIVED
+                                if (localState.getMarkerCount() == currentNode.getNeighborCount()) {
+                                    // LOCAL SNAPSHOT PROCESS FINISHED; CC DUE;
+                                    localState.setSnapshotInactive();
+                                }
+
+                                // CHECK IF READY FOR CC TO PARENT
+                                if (localState.getChildRecordsLength() == currentNode.getChildrenCount()
+                                        && !localState.isSnapshotActive()) {
+                                    sendConvergeCastToParent(selfNode, localState);
+                                    localState.clearSnapshotData(); // done with snapshot
+                                }
+                                break;
+
+                            case CC:
+                                message.print();
+                                int childRecordCount = localState.addChildRecordAndGet(pid, message.getStateRecords());
+                                if (childRecordCount == currentNode.getChildrenCount()
+                                        && !localState.isSnapshotActive()) {
+                                    sendConvergeCastToParent(selfNode, localState);
+                                    localState.clearSnapshotData(); // done with snapshot
+                                }
+                                break;
+
+                            case FINISH:
+                                assert localState.isMapTerminated();
+                                localState.terminateSystem();
+                                Message finishMessage = new Message(currentNode.getId(), Message.MessageType.FINISH);
+                                for (Node node : currentNode.getChildren()) {
+                                    MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
+                                    node.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
+                                }
+                                System.out.println("\n---Sent FINISH to child node if any---");
+                                receiving = false; // stop receiving
+                                break;
+
+                            default:
+                                System.out.println(message.getmType() + " unexpected!");
+                                receiving = false;
+                                break;
                         }
                     }
                 }
@@ -201,10 +214,21 @@ public class SocketService implements Runnable {
 
     private synchronized void sendConvergeCastToParent(Node selfNode, LocalState localState)
             throws ClassNotFoundException, IOException {
-        if(selfNode.getId() == Constants.BASE_NODE) {
+        if (selfNode.getParent() == null) {
             // ROOT NODE
-            // TODO: check termination
-            // TODO: set system termination
+            List<StateRecord> combinedStateRecords = new ArrayList<>();
+            combinedStateRecords.add(localState.getStateRecord());
+            localState.getChildRecords().values().stream().forEach(combinedStateRecords::addAll);
+            if (combinedStateRecords.stream()
+                    .filter(state -> state.isNodeMapActive() || !state.areAllChannelsEmpty())
+                    .count() == 0) {
+                // terminate the system
+                localState.terminateSystem();
+                System.out.println("IDENTIFIED DISTRIBUTED SYSTEM TERMINATED");
+            } else {
+                // wait and start snapshot again at root
+                new Thread(new SnapshotStarter(localState, selfNode), "SNAP-SRVC").start();
+            }
             return;
         }
 
@@ -215,7 +239,7 @@ public class SocketService implements Runnable {
         Message messageToParent = new Message(selfNode.getId(), MessageType.CC, combinedStateRecords);
         MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
         selfNode.getParent().getChannel().send(messageToParent.toByteBuffer(), messageInfo);
-        messageToParent.print(" DESTINATION: " + selfNode.getParent().getId());
+        messageToParent.print(" Destination: " + selfNode.getParent().getId());
     }
 
 }

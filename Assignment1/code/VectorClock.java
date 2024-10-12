@@ -20,7 +20,7 @@ public class VectorClock extends AtomicIntegerArray {
     public static VectorClock copy(VectorClock vc) {
         // deep copy
         VectorClock clockCopy = new VectorClock(vc.length());
-        for(int i=0; i<vc.length(); i++) {
+        for (int i = 0; i < vc.length(); i++) {
             clockCopy.set(i, vc.get(i));
         }
         return clockCopy;
@@ -51,7 +51,7 @@ public class VectorClock extends AtomicIntegerArray {
     public void mergeMessageClockAndIncrement(VectorClock messageClock, int nodeId) {
         assert this.length() == messageClock.length();
         for (int i = 0; i < this.length(); i++) {
-            if(this.get(i) < messageClock.get(i)) {
+            if (this.get(i) < messageClock.get(i)) {
                 this.set(i, messageClock.get(i));
             }
         }
@@ -64,6 +64,20 @@ public class VectorClock extends AtomicIntegerArray {
 
     public void print(String prefix) {
         System.out.println(prefix + " " + this.toString());
+    }
+
+    public static String getFileString(VectorClock vc) {
+        int iMax = vc.length() - 1;
+        if (iMax == -1)
+            return "";
+
+        StringBuilder b = new StringBuilder();
+        for (int i = 0;; i++) {
+            b.append(vc.get(i));
+            if (i == iMax)
+                return b.append(System.lineSeparator()).toString();
+            b.append(' ');
+        }
     }
 
     public static void test(VectorClock v1, VectorClock v2) {

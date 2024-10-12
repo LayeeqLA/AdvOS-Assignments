@@ -7,10 +7,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 public class Message implements Serializable {
@@ -113,6 +110,10 @@ public class Message implements Serializable {
         buf.get(data);
         buf.clear();
 
+        if (data.length == 0) {
+            return null;
+        }
+
         ByteArrayInputStream bis = new ByteArrayInputStream(data);
         ObjectInputStream ois = new ObjectInputStream(bis);
         Message msg = (Message) ois.readObject();
@@ -154,6 +155,8 @@ public class Message implements Serializable {
                 System.out.println("Sender: " + sender + " MsgType: " + mType
                         + " StateRecords: "
                         + stateRecords.stream().map(StateRecord::toString).collect(Collectors.joining()) + postfix);
+                break;
+            default:
                 break;
         }
     }

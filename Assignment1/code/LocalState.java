@@ -12,7 +12,7 @@ public class LocalState {
 
     // FALSE -> PASSIVE
     // TRUE -> ACTIVE
-    private AtomicBoolean status;
+    private AtomicBoolean systemActive; // MAP
     private AtomicBoolean snapshotActive;
     private AtomicBoolean systemTerminated;
     private int maxNumber; // of messages that can be sent
@@ -24,18 +24,18 @@ public class LocalState {
     private Map<Integer, Integer> channelState;
     private Map<Integer, List<StateRecord>> childRecords;
 
-    public synchronized boolean isAlive() {
-        return status.get();
+    public synchronized boolean isSystemActive() {
+        return systemActive.get();
     }
 
-    public synchronized void setActive() {
+    public synchronized void setSystemActive() {
         if (currentSent < maxNumber) {
-            status.set(true);
+            systemActive.set(true);
         }
     }
 
-    public synchronized void setPassive() {
-        status.set(false);
+    public synchronized void setSystemPassive() {
+        systemActive.set(false);
     }
 
     public synchronized void incrementMessageCount() {
@@ -48,36 +48,43 @@ public class LocalState {
 
     public synchronized boolean isMapTerminated() {
         // PASSIVE AND MAX NUMBER OF MESSAGES SENT
-        return !status.get() && currentSent >= maxNumber;
-        // TODO: CHANGE
+        return !systemActive.get() && currentSent >= maxNumber;
     }
 
     public synchronized boolean isSystemTerminated() {
         return systemTerminated.get();
     }
 
+    public synchronized void terminateSystem() {
+        systemTerminated.set(true);
+        terminationLatch.countDown();
+    }
+
     public boolean isSnapshotActive() {
         return snapshotActive.get();
     }
 
-    public void setSnapshotActive(int currentPid, int markerPid, int[] neighborIds) {
+    public void setSnapshotActive(int currentPid, Integer markerPid, int[] neighborIds) {
+        assert !snapshotActive.get();
         this.snapshotActive.set(true);
-        this.markersReceived.add(markerPid);
-        this.stateRecord = new StateRecord(currentPid, clock, false);
+        if (markerPid != null) {
+            this.markersReceived.add(markerPid);
+        }
+        this.stateRecord = new StateRecord(currentPid, systemActive.get());
         for (int neighborId : neighborIds) {
-            if (neighborId != markerPid) {
+            if (markerPid == null || neighborId != markerPid) {
                 this.channelState.put(neighborId, 0);
             }
         }
-        // TODO: Write to file
     }
 
     public void setSnapshotInactive() {
+        assert snapshotActive.get();
         this.snapshotActive.set(false);
         this.stateRecord.setAreAllChannelsEmpty(channelState.values().stream().reduce(Integer::sum).get() == 0);
     }
 
-    public void addChannelMessage(int senderId) {
+    public synchronized void addChannelAppMessage(int senderId) {
         if (snapshotActive.get() && channelState.keySet().contains(senderId)) {
             channelState.merge(senderId, 1, Integer::sum);
         }
@@ -94,10 +101,8 @@ public class LocalState {
         return clock;
     }
 
-    // returns how many markers are received
-    public synchronized int addMarkerReceivedAndGet(int pid) {
+    public synchronized void addMarkerReceived(int pid) {
         markersReceived.add(pid);
-        return markersReceived.size();
     }
 
     public synchronized int getMarkerCount() {
@@ -136,7 +141,7 @@ public class LocalState {
         this.terminationLatch = new CountDownLatch(1);
         this.systemTerminated = new AtomicBoolean(false);
         this.snapshotActive = new AtomicBoolean(false);
-        this.status = new AtomicBoolean(status);
+        this.systemActive = new AtomicBoolean(status);
         this.clock = new VectorClock(nodeCount);
         this.markersReceived = new HashSet<>();
         this.childRecords = new HashMap<>();
