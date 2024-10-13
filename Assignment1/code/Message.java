@@ -43,8 +43,6 @@ public class Message implements Serializable {
         MARKER,
         CC,
         FINISH,
-        TERMINATE,
-        INVALID,
         ;
 
     }
@@ -131,13 +129,12 @@ public class Message implements Serializable {
                         + " Data: " + data + " Clock: " + clock.toString());
                 break;
             case MARKER:
+            case FINISH:
                 System.out.println("Sender: " + sender + " MsgType: " + mType);
                 break;
             case CC:
                 System.out.println("Sender: " + sender + " MsgType: " + mType + " StateRecords: "
                         + stateRecords.stream().map(StateRecord::toString).collect(Collectors.joining()));
-                break;
-            default:
                 break;
         }
     }
@@ -149,14 +146,13 @@ public class Message implements Serializable {
                         + " Data: " + data + " Clock: " + clock.toString() + postfix);
                 break;
             case MARKER:
+            case FINISH:
                 System.out.println("Sender: " + sender + " MsgType: " + mType + postfix);
                 break;
             case CC:
                 System.out.println("Sender: " + sender + " MsgType: " + mType
                         + " StateRecords: "
                         + stateRecords.stream().map(StateRecord::toString).collect(Collectors.joining()) + postfix);
-                break;
-            default:
                 break;
         }
     }

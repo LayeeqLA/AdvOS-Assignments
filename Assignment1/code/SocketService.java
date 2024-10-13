@@ -71,12 +71,12 @@ public class SocketService implements Runnable {
         }
     }
 
-    private void printReceivedInformation() {
-        System.out.println("*****RECEIVED INFORMATION*****");
-        for (Entry<Integer, Integer> info : receivedInfo.entrySet()) {
-            System.out.println(info.getKey() + " -> " + info.getValue());
-        }
-    }
+    // private void printReceivedInformation() {
+    //     System.out.println("*****RECEIVED INFORMATION*****");
+    //     for (Entry<Integer, Integer> info : receivedInfo.entrySet()) {
+    //         System.out.println(info.getKey() + " -> " + info.getValue());
+    //     }
+    // }
 
     private class ClientHandler implements Runnable {
 
@@ -124,15 +124,14 @@ public class SocketService implements Runnable {
                     synchronized (localState) {
                         switch (message.getmType()) {
                             case APP:
-                                localState.setSystemActive();
+                                VectorClock messageClock = message.getClock();
+                                localState.getClock().mergeMessageClockAndIncrement(messageClock,
+                                        currentNode.getId());
+                                localState.getClock().print("After recv: ");
                                 localState.addChannelAppMessage(pid);
                                 receivedData.merge(message.getSender(), message.getData(), Integer::sum);
-                                synchronized (localState) {
-                                    VectorClock messageClock = message.getClock();
-                                    localState.getClock().mergeMessageClockAndIncrement(messageClock,
-                                            currentNode.getId());
-                                    localState.getClock().print("After recv: ");
-                                }
+                                localState.setSystemActive();
+
                                 break;
 
                             case MARKER:
@@ -141,7 +140,7 @@ public class SocketService implements Runnable {
                                     // CASE 1: Snapshot processing is active
                                     localState.addMarkerReceived(pid);
                                 } else {
-                                    // CASE 1: Snapshot processing is not active
+                                    // CASE 2: Snapshot processing is not active
                                     // This marker message starts the local snapshot process
                                     // also records this channel as marked
                                     localState.setSnapshotActive(currentNode.getId(), pid,
@@ -171,33 +170,39 @@ public class SocketService implements Runnable {
                                     sendConvergeCastToParent(selfNode, localState);
                                     localState.clearSnapshotData(); // done with snapshot
                                 }
+
                                 break;
 
                             case CC:
                                 message.print();
-                                int childRecordCount = localState.addChildRecordAndGet(pid, message.getStateRecords());
+                                int childRecordCount = localState.addChildRecordAndGet(pid,
+                                        message.getStateRecords());
                                 if (childRecordCount == currentNode.getChildrenCount()
                                         && !localState.isSnapshotActive()) {
                                     sendConvergeCastToParent(selfNode, localState);
                                     localState.clearSnapshotData(); // done with snapshot
                                 }
+
                                 break;
 
                             case FINISH:
                                 assert localState.isMapTerminated();
+                                message.print(" ======> received");
                                 localState.terminateSystem();
-                                Message finishMessage = new Message(currentNode.getId(), Message.MessageType.FINISH);
-                                for (Node node : currentNode.getChildren()) {
+                                Message finishMessage = new Message(currentNode.getId(),
+                                        Message.MessageType.FINISH);
+                                for (Node destNode : currentNode.getChildren()) {
+                                    finishMessage.print(" destination: " + destNode.getId());
                                     MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
-                                    node.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
+                                    destNode.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
                                 }
                                 System.out.println("\n---Sent FINISH to child node if any---");
-                                receiving = false; // stop receiving
+                                receiving = false;
+                                currentNode.closeFileWriter();
                                 break;
 
                             default:
                                 System.out.println(message.getmType() + " unexpected!");
-                                receiving = false;
                                 break;
                         }
                     }
@@ -207,14 +212,20 @@ public class SocketService implements Runnable {
                 System.err.println("xxxxx---CLIENT HANDLER ERROR--> " + Thread.currentThread().getName());
                 System.err.println(e.getMessage());
                 e.printStackTrace();
+            } finally {
+                try {
+                    channel.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
 
     }
 
-    private synchronized void sendConvergeCastToParent(Node selfNode, LocalState localState)
+    private synchronized void sendConvergeCastToParent(Node currentNode, LocalState localState)
             throws ClassNotFoundException, IOException {
-        if (selfNode.getParent() == null) {
+        if (currentNode.getParent() == null) {
             // ROOT NODE
             List<StateRecord> combinedStateRecords = new ArrayList<>();
             combinedStateRecords.add(localState.getStateRecord());
@@ -223,11 +234,12 @@ public class SocketService implements Runnable {
                     .filter(state -> state.isNodeMapActive() || !state.areAllChannelsEmpty())
                     .count() == 0) {
                 // terminate the system
-                localState.terminateSystem();
                 System.out.println("IDENTIFIED DISTRIBUTED SYSTEM TERMINATED");
+                localState.terminateSystem();
+                currentNode.closeFileWriter();
             } else {
                 // wait and start snapshot again at root
-                new Thread(new SnapshotStarter(localState, selfNode), "SNAP-SRVC").start();
+                new Thread(new SnapshotStarter(localState, currentNode), "SNAP-SRVC").start();
             }
             return;
         }
@@ -236,10 +248,10 @@ public class SocketService implements Runnable {
         List<StateRecord> combinedStateRecords = new ArrayList<>();
         combinedStateRecords.add(localState.getStateRecord());
         localState.getChildRecords().values().stream().forEach(combinedStateRecords::addAll);
-        Message messageToParent = new Message(selfNode.getId(), MessageType.CC, combinedStateRecords);
+        Message messageToParent = new Message(currentNode.getId(), MessageType.CC, combinedStateRecords);
         MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
-        selfNode.getParent().getChannel().send(messageToParent.toByteBuffer(), messageInfo);
-        messageToParent.print(" Destination: " + selfNode.getParent().getId());
+        currentNode.getParent().getChannel().send(messageToParent.toByteBuffer(), messageInfo);
+        messageToParent.print(" Destination: " + currentNode.getParent().getId());
     }
 
 }

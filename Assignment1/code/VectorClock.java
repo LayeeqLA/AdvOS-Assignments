@@ -8,7 +8,6 @@ public class VectorClock extends AtomicIntegerArray {
 
     public VectorClock(int numberOfProcesses) {
         // default 0s
-        // clock = new AtomicIntegerArray(numberOfProcesses);
         super(numberOfProcesses);
     }
 

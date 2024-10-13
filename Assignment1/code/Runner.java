@@ -1,6 +1,5 @@
 package code;
 
-import java.io.FileWriter;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
@@ -11,6 +10,7 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
@@ -50,7 +50,7 @@ public class Runner {
             boolean initializeAsActive = nodeId == Constants.BASE_NODE;
             LocalState localState = new LocalState(maxNumber, initializeAsActive, nodeCount);
             Thread receiverThread = new Thread(new SocketService(currentNode,
-                     latch, localState), "RECV-SRVC");
+                    latch, localState), "RECV-SRVC");
             receiverThread.start();
 
             for (Node node : currentNode.getNeighbors()) {
@@ -82,8 +82,8 @@ public class Runner {
             latch.await();
             System.out.println("*****CONNECTIONS READY*****\n");
 
-            if (nodeId == Constants.BASE_NODE) {
-                Thread.sleep(4000);
+            if (currentNode.getParent() == null) {
+                Thread.sleep(10000);
                 SnapshotStarter.snapshotDelay = snapshotDelay;
                 new Thread(new SnapshotStarter(localState, currentNode), "SNAP-SRVC").start();
             }
@@ -121,23 +121,34 @@ public class Runner {
             // WAIT FOR SNAPSHOT TO INFORM TERMINATION OF SYSTEM
             localState.getTerminationLatch().await();
 
-            if (nodeId == Constants.BASE_NODE) {
+            if (currentNode.getParent() == null) {
+                // ROOT sends FINISH to terminate the system
                 Message finishMessage = new Message(currentNode.getId(), Message.MessageType.FINISH);
                 for (Node node : currentNode.getChildren()) {
                     MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0);
                     node.getChannel().send(finishMessage.toByteBuffer(), messageInfo);
                 }
                 System.out.println("\n---Sent FINISH to child node if any---");
-                receiverThread.join(); // received FINISH from all neighbors
-            }
 
-            for (Node node : currentNode.getNeighbors()) {
-                node.getChannel().close();
+            } else {
+                Set<Integer> childrenIdList = Arrays.stream(currentNode.getChildrenIds()).boxed()
+                        .collect(Collectors.toSet());
+                for (Node node : currentNode.getNeighbors()) {
+                    if (!childrenIdList.contains(node.getId())
+                            && node != currentNode.getParent()) {
+                        System.out.println("closing connection " + currentNode.getId() + " --> " + node.getId());
+                        node.getChannel().close();
+                    }
+                }
             }
 
             receiverThread.join(); // received FINISH from all neighbors
 
-            System.out.println("\n*****END*****");
+            System.out.println("\n*****END*****\n\n");
+
+            if (currentNode.getParent() == null) {
+                ConsistencyChecker.checkGlobalStateConsistency(nodeCount, configPath);
+            }
 
         } catch (NumberFormatException | IOException | InterruptedException | ClassNotFoundException e) {
             System.err.println("xxxxx---Processing error occured---xxxxx");
@@ -154,9 +165,6 @@ public class Runner {
                         e.printStackTrace();
                     }
                 }
-            }
-            if (currentNode != null) {
-                currentNode.closeFileWriter();
             }
         }
 

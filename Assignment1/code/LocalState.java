@@ -85,7 +85,8 @@ public class LocalState {
     }
 
     public synchronized void addChannelAppMessage(int senderId) {
-        if (snapshotActive.get() && channelState.keySet().contains(senderId)) {
+        if (snapshotActive.get() && channelState.keySet().contains(senderId)
+                && !markersReceived.contains(senderId)) {
             channelState.merge(senderId, 1, Integer::sum);
         }
     }
