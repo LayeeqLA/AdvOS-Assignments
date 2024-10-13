@@ -35,6 +35,7 @@ public class LocalState {
     }
 
     public synchronized void setSystemPassive() {
+        System.out.println("MAP is passive");
         systemActive.set(false);
     }
 
@@ -81,7 +82,7 @@ public class LocalState {
     public void setSnapshotInactive() {
         assert snapshotActive.get();
         this.snapshotActive.set(false);
-        this.stateRecord.setAreAllChannelsEmpty(channelState.values().stream().reduce(Integer::sum).get() == 0);
+        this.stateRecord.setAreAllChannelsEmpty(channelState.values().stream().reduce(Integer::sum).orElse(0) == 0);
     }
 
     public synchronized void addChannelAppMessage(int senderId) {

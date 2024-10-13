@@ -37,8 +37,8 @@ public class Runner {
 
         Node currentNode = null;
         try {
-            int nodeId = Integer.parseInt(args[0]);
-            String configPath = args[1];
+            int nodeId = Integer.parseInt(args[1]);
+            String configPath = args[0];
             System.out.println("PID for this host: " + nodeId);
 
             currentNode = processConfig(configPath, nodeId);
