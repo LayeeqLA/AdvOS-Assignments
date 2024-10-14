@@ -42,8 +42,8 @@ cat $CONFIGLOCAL | sed -e "s/#.*//" | sed -e "/^\s*$/d" | sed -e "s/\r$//" |
         echo $host
      
         # issue command
-        echo issued command: -e "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no $netid@$host killall -u $netid" &
-        gnome-terminal -e "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no $netid@$host killall -u $netid" &
+        echo issued command: gnome-terminal -- bash -c "ssh -i ~/.ssh/id_rsa_utdallas -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no $netid@$host killall -u $netid; exec bash -l" &
+        gnome-terminal -- bash -c "ssh -i ~/.ssh/id_rsa_utdallas -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no $netid@$host killall -u $netid; exec bash -l" &
         sleep 1
 
         # increment loop counter
