@@ -1,4 +1,5 @@
-Code by Jordan Frimpter
+Scripts by Jordan Frimpter
+Adapted/modified by Layeeq Ahmed
 
 4 scripts included:
 
@@ -15,18 +16,18 @@ ALL scripts: ----------------------------------
   chmod +x build.sh launcher.sh cleanup.sh cleanFiles.sh
 
 
-- if at any point in running the scripts you recieve an error that is something like "token error: token is ""
+- if at any point in running the scripts you receive an error that is something like "token error: token is ""
   and you modify your scripts in Windows then you are experiencing conflict from the use of carriage returns.
   Run the following command on the file and try again to remove the carriage returns (<filename> is replaced with the file's name):
 
   sed -i -e 's/\r$//' <filename>
 
 
-- These scripts are somewhat assumed to be executed in the same folder as your project; the expected execution order is:
+- These scripts are somewhat assumed to be executed in the same folder as your project; [modified to run from any path as long as paths are absolute and java commands have -cp]; the expected execution order is:
   build.sh
   launcher.sh
   cleanup.sh
-  cleanFiles.sh [optional]
+  clean-files.sh [optional]
 
 - These scripts were written for a java project; you will need to modify them more heavily for compiling in c or c++.
 
