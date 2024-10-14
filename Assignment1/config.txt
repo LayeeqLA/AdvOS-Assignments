@@ -1,9 +1,13 @@
 ﻿# Any text following ‘#’ should be ignored
-5 # Total number of nodes
-# NodeID - Domain name - port number
-0 dc01.utdallas.edu 53390 # Domain Name and port of node 0
-1 dc02.utdallas.edu 53345 # Domain Name and port of node 1
-2 dc03.utdallas.edu 53345 # Domain Name and port of node 2
-3 dc04.utdallas.edu 53345 # Domain Name and port of node 3
-4 dc05.utdallas.edu 53345 # Domain Name and port of node 4
 
+5 6 10 100 2000 15
+0 dc02 53390 # nodeID hostName l i s t e nPo r t
+1 dc03 53345
+2 dc04 53346
+3 dc05 53347
+4 dc06 53348
+1 4 # space de l imi t ed l i s t o f ne ighbor s f o r node 0
+0 2 3 # space de l imi t ed l i s t o f ne ighbor s f o r node 1
+1 3 # . . . node 2
+1 2 4 # . . . node 3
+0 3 # . . . node 4
