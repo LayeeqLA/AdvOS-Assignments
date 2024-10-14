@@ -186,7 +186,6 @@ public class SocketService implements Runnable {
                                 break;
 
                             case FINISH:
-                                assert localState.isMapTerminated();
                                 message.print(" ======> received");
                                 localState.terminateSystem();
                                 Message finishMessage = new Message(currentNode.getId(),

@@ -88,7 +88,7 @@ public class Runner {
                 new Thread(new SnapshotStarter(localState, currentNode), "SNAP-SRVC").start();
             }
 
-            while (!localState.isMapTerminated()) {
+            while (!localState.isMapTerminated() && !localState.isSystemTerminated()) {
                 if (localState.isSystemActive()) {
                     int messagesToSend = Constants.getRandomNumber(minPerActive, maxPerActive);
                     for (int i = 0; i < messagesToSend; i++) {
