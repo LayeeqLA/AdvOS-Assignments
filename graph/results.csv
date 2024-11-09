@@ -1,0 +1,13 @@
+c,Protocol,Message Complexity,Response Time,System Throughput,Record Final
+5,RA,18,399.8,23.78,True
+5,RC,13.76,333.89,27.22,True
+25,RA,18,430.5,22.19,True
+25,RC,12.19,300.5,30.43,True
+50,RA,18,561.44,17.21,True
+50,RC,16.16,507.45,18.91,True
+100,RA,18,1015.43,9.65,True
+100,RC,17.76,990.78,9.87,True
+200,RA,18,2168.95,4.54,True
+200,RC,17.89,2103.93,4.69,True
+250,RA,18,2561.89,3.85,True
+250,RC,17.91,2543.77,3.87,True
